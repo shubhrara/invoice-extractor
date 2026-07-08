@@ -13,10 +13,8 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-
 class InvoiceRequest(BaseModel):
     text: str
-
 
 class InvoiceResponse(BaseModel):
     vendor: str
@@ -24,69 +22,45 @@ class InvoiceResponse(BaseModel):
     currency: str
     date: str
 
-
 @app.post("/extract", response_model=InvoiceResponse)
-def extract_invoice(req: InvoiceRequest):
+def extract(req: InvoiceRequest):
+
     text = req.text
 
-    if not text.strip():
-        return InvoiceResponse(
-            vendor="",
-            amount=0.0,
-            currency="USD",
-            date=""
-        )
-
-    # ---------- Vendor ----------
     vendor = ""
 
-    patterns = [
-        r"Vendor[:\s]+(.+)",
-        r"Supplier[:\s]+(.+)",
-        r"From[:\s]+(.+)"
-    ]
-
-    for p in patterns:
-        m = re.search(p, text, re.IGNORECASE)
+    for pat in [
+        r"Vendor:\s*(.+)",
+        r"Supplier:\s*(.+)",
+        r"From:\s*(.+)"
+    ]:
+        m = re.search(pat, text, re.I)
         if m:
             vendor = m.group(1).split("\n")[0].strip()
             break
 
     if vendor == "":
-        first = text.strip().split("\n")[0]
-        vendor = first.strip()
+        vendor = text.split("\n")[0].strip()
 
-    # ---------- Amount ----------
     amount = 0.0
 
-    amount_patterns = [
-        r"Total(?: Due)?[:\s]*[$€£]?([0-9]+(?:\.[0-9]{1,2})?)",
-        r"Amount(?: Due)?[:\s]*[$€£]?([0-9]+(?:\.[0-9]{1,2})?)",
-        r"Due[:\s]*[$€£]?([0-9]+(?:\.[0-9]{1,2})?)",
-        r"[$€£]\s*([0-9]+(?:\.[0-9]{1,2})?)"
-    ]
-
-    for p in amount_patterns:
-        m = re.search(p, text, re.IGNORECASE)
+    for pat in [
+        r"Total\s+Due[:\s]*(?:USD|EUR|GBP)?\s*[$€£]?\s*([0-9]+(?:\.[0-9]{1,2})?)",
+        r"Amount\s+Due[:\s]*(?:USD|EUR|GBP)?\s*[$€£]?\s*([0-9]+(?:\.[0-9]{1,2})?)",
+        r"Total[:\s]*(?:USD|EUR|GBP)?\s*[$€£]?\s*([0-9]+(?:\.[0-9]{1,2})?)",
+        r"Amount[:\s]*(?:USD|EUR|GBP)?\s*[$€£]?\s*([0-9]+(?:\.[0-9]{1,2})?)",
+    ]:
+        m = re.search(pat, text, re.I)
         if m:
             amount = float(m.group(1))
             break
 
-    # ---------- Currency ----------
     currency = "USD"
 
     m = re.search(r"\b(USD|EUR|GBP)\b", text)
     if m:
-        currency = m.group(1).upper()
-    else:
-        if "$" in text:
-            currency = "USD"
-        elif "€" in text:
-            currency = "EUR"
-        elif "£" in text:
-            currency = "GBP"
+        currency = m.group(1)
 
-    # ---------- Date ----------
     date = ""
 
     m = re.search(r"(2026-\d{2}-\d{2})", text)
